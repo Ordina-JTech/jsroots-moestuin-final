@@ -7,7 +7,7 @@
 
 ## Installation
 ```sh
-npm install
+npm install --no-optional
 ```
 Start the REST server on port 8888.
 ```sh
