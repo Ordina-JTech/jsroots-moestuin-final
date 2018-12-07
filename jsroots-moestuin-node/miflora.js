@@ -17,91 +17,111 @@ class MiFlora extends EventEmitter {
         super();
         this.noble = noble;
         this._macAddress = macAddress;
-        noble.on('discover', this.discover.bind(this));
-    }
-
-    discover(peripheral) {
-        if (this._macAddress !== undefined) {
-            if (this._macAddress.toLowerCase() === peripheral.address.toLowerCase()) {
-                // start listening the specific device
-                this.connectDevice(peripheral);
+        noble.on('discover', (peripheral) => {
+//            console.log('noble:onDiscover');
+            
+            if (this._macAddress !== undefined) {
+                if (this._macAddress.toLowerCase() === peripheral.address.toLowerCase()) {
+                    console.log('connect to macAdress :' + this._macAddress);
+                    // start listening the specific device
+                    this.connectDevice(peripheral, this);
+                }
+            } else if (peripheral.advertisement.localName === DEFAULT_DEVICE_NAME) {
+                console.log('connect to ' + DEFAULT_DEVICE_NAME);
+                // start listening found device
+                this.connectDevice(peripheral, this);
             }
-        } else if (peripheral.advertisement.localName === DEFAULT_DEVICE_NAME) {
-            // start listening found device
-            this.connectDevice(peripheral);
-        }
+        });
+        
+        noble.on('scanStart', () => {
+            console.log('noble:onScanStart');
+        });
+        noble.on('scanStop', () => {
+            console.log('noble:onScanStop');
+            this.startScanning();
+        });
+        
+        noble.on('warning', (message) => {
+            console.log('noble:onWarning:' + message);
+        });        
     }
 
-    connectDevice(peripheral) {
+    connectDevice(peripheral, context) {
         // prevent simultanious connection to the same device
+        console.log('connect to device : ' + peripheral);
         if (peripheral.state === 'disconnected') {
             peripheral.connect();
-            peripheral.once('connect', function () {
-                this.listenDevice(peripheral, this);
-            }.bind(this));
+            
+            peripheral.once('connect', () => {
+                peripheral.discoverSomeServicesAndCharacteristics(SERVICE_UUIDS, CHARACTERISTIC_UUIDS, function (error, services, characteristics) {
+                    console.log('discover some service - services : ' + services);
+                    console.log('discover some service - error    :' + error);
+                    characteristics.forEach((characteristic) => {
+                        switch (characteristic.uuid) {
+                            case DATA_CHARACTERISTIC_UUID:
+                                characteristic.read((error, data) => {
+                                    if (error) console.log('data characteristics - error :' + error);
+                                    
+                                    let temperature = data.readUInt16LE(0) / 10;
+                                    let lux = data.readUInt32LE(3);
+                                    let moisture = data.readUInt16BE(6);
+                                    let fertility = data.readUInt16LE(8);
+                                    let deviceData = new DeviceData(peripheral.id,
+                                            temperature,
+                                            lux,
+                                            moisture,
+                                            fertility);
+                                    console.table(deviceData);
+                                    context.emit('data', deviceData);
+                                });
+                                break;
+                            case FIRMWARE_CHARACTERISTIC_UUID:
+                                characteristic.read((error, data) => {
+                                    if (error) console.log('firmware characteristics - error :' + error);
+                                    
+                                    const firmware = {
+                                        deviceId: peripheral.id,
+                                        batteryLevel: parseInt(data.toString('hex', 0, 1), 16),
+                                        firmwareVersion: data.toString('ascii', 2, data.length)
+                                    };
+                                    console.table(firmware);
+                                    context.emit('firmware', firmware);
+                                });
+                                break;
+                            case REALTIME_CHARACTERISTIC_UUID:
+                                characteristic.write(REALTIME_META_VALUE, false);
+                                break;
+                        }
+                    });
+                });
+            });
         }
     }
 
-    listenDevice(peripheral, context) {
-        peripheral.discoverSomeServicesAndCharacteristics(SERVICE_UUIDS, CHARACTERISTIC_UUIDS, function (error, services, characteristics) {
-            characteristics.forEach(function (characteristic) {
-                switch (characteristic.uuid) {
-                    case DATA_CHARACTERISTIC_UUID:
-                        characteristic.read(function (error, data) {
-                            context.parseData(peripheral, data);
-                        });
-                        break;
-                    case FIRMWARE_CHARACTERISTIC_UUID:
-                        characteristic.read(function (error, data) {
-                            context.parseFirmwareData(peripheral, data);
-                        });
-                        break;
-                    case REALTIME_CHARACTERISTIC_UUID:
-                        characteristic.write(REALTIME_META_VALUE, false);
-                        break;
-                }
-            });
-        });
-    }
-
-    parseData(peripheral, data) {
-        let temperature = data.readUInt16LE(0) / 10;
-        let lux = data.readUInt32LE(3);
-        let moisture = data.readUInt16BE(6);
-        let fertility = data.readUInt16LE(8);
-        let deviceData = new DeviceData(peripheral.id,
-            temperature,
-            lux,
-            moisture,
-            fertility);
-
-        this.emit('data', deviceData);
-    }
-
-    parseFirmwareData(peripheral, data) {
-        let firmware = {
-            deviceId: peripheral.id,
-            batteryLevel: parseInt(data.toString('hex', 0, 1), 16),
-            firmwareVersion: data.toString('ascii', 2, data.length)
-        };
-
-        this.emit('firmware', firmware);
-    }
 
     startScanning() {
         if (noble.state === 'poweredOn') {
-            noble.startScanning([], true);
+            console.log('Lets start scanning.');
+            noble.startScanning([], true, (e) => {
+                console.table(e);
+            });
         } else {
             // bind event to start scanning
-            noble.on('stateChange', function (state) {
+            console.log('Wait for stateChange.');
+            noble.on('stateChange', (state) => {
+                console.log('noble state : ' + state);
                 if (state === 'poweredOn') {
-                    noble.startScanning([], true);
+                    console.log('Ready set! start scanning!...');
+                    noble.startScanning([], true, (e) => {
+                        console.table(e);
+                    });
                 }
             });
         }
     }
 
     stopScanning() {
+        console.log("stopScanning...");
         noble.stopScanning();
     }
 }
