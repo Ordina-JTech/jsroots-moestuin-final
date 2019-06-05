@@ -1,5 +1,5 @@
 const MiFlora = require('./miflora');
-const express = require('express')
+const express = require('express');
 const http = require('http');
 const bodyParser = require('body-parser');
 const io = require('socket.io')(http);
@@ -39,10 +39,10 @@ flora.startScanning();
 function updateDeviceData(data) {
     let deviceIndex = floraDevices.findIndex(x => x.deviceId === data.deviceId);
 
-    if (deviceIndex == -1) {
+    if (deviceIndex === -1) {
         floraDevices.push(data);
     } else {
         floraDevices[deviceIndex] = data;
     }
-    io.local.emit('data', floraDevices)
+    io.local.emit('data', floraDevices);
 }
