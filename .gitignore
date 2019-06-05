@@ -19,6 +19,7 @@ log.txt
 .versions/
 node_modules/
 $RECYCLE.BIN/
+jsroots-moestuin-final-groningen-branch.iml
 
 .DS_Store
 Thumbs.db
